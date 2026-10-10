@@ -140,6 +140,20 @@ pub enum ImportError {
     OrdinalNotFound { dll: String, ordinal: u16 },
 }
 
+/// Errors occurring during export directory parsing.
+/// Conforms to PE Specification Section 6.3: The .edata Section.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExportError {
+    /// Export directory bounds exceed file or image.
+    DirectoryOutOfBounds { rva: u32, size: u32 },
+    /// Export directory header is truncated or out of bounds.
+    HeaderOutOfBounds { offset: usize },
+    /// An RVA within the export directory does not point within any mapped section.
+    UnmappedRva { rva: u32, context: &'static str },
+    /// ASCII name or forwarder string is not null-terminated within section bounds.
+    InvalidString { offset: usize },
+}
+
 /// Errors occurring during TLS directory parsing.
 /// Conforms to PE Specification Section 6.7: The .tls Section.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -422,6 +436,34 @@ impl fmt::Display for TlsError {
     }
 }
 
+impl fmt::Display for ExportError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExportError::DirectoryOutOfBounds { rva, size } => {
+                write!(
+                    f,
+                    "export directory out of bounds: RVA {rva:#x}, size {size:#x}"
+                )
+            }
+            ExportError::HeaderOutOfBounds { offset } => {
+                write!(
+                    f,
+                    "export directory header out of bounds at offset {offset:#x}"
+                )
+            }
+            ExportError::UnmappedRva { rva, context } => {
+                write!(f, "export {context} RVA {rva:#x} is unmapped")
+            }
+            ExportError::InvalidString { offset } => {
+                write!(
+                    f,
+                    "export string at offset {offset:#x} is not null-terminated"
+                )
+            }
+        }
+    }
+}
+
 impl fmt::Display for MappingError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -458,6 +500,9 @@ impl std::error::Error for RelocationError {}
 
 #[cfg(feature = "std")]
 impl std::error::Error for ImportError {}
+
+#[cfg(feature = "std")]
+impl std::error::Error for ExportError {}
 
 #[cfg(feature = "std")]
 impl std::error::Error for TlsError {}

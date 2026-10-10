@@ -1,0 +1,9 @@
+[package]
+name = "carrick-nt-abi"
+version = "0.1.0"
+edition = "2021"
+description = "Clean-room NT wire types, status codes, and Carrick system call service IDs"
+authors = ["Timothy J Fontaine <tjfontaine@atxconsulting.com>"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]

@@ -1,0 +1,25 @@
+[package]
+name = "carrick-kernel32"
+version = "0.1.0"
+edition = "2021"
+description = "Clean-room in-guest kernel32.dll forwarders for Carrick NT"
+authors = ["Timothy J Fontaine <tjfontaine@atxconsulting.com>"]
+license = "MIT OR Apache-2.0"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+name = "kernel32"
+
+[dependencies]
+carrick-nt-abi = { path = "../carrick-nt-abi" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = "z"
+lto = true
+codegen-units = 1

@@ -1,10 +1,13 @@
 [workspace]
 members = [
     "crates/carrick-conformance-nt",
+    "crates/carrick-nt-abi",
     "crates/carrick-pe-loader",
     "xtask",
 ]
 exclude = [
     "crates/carrick-conformance-nt/fixtures/hello_console",
+    "crates/carrick-ntdll",
+    "crates/carrick-kernel32",
 ]
 resolver = "2"
