@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "crates/carrick-conformance-nt",
+    "xtask",
+]
+exclude = [
+    "crates/carrick-conformance-nt/fixtures/hello_console",
+]
+resolver = "2"
