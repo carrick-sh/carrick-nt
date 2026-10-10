@@ -18,6 +18,7 @@
 extern crate alloc;
 
 pub mod error;
+pub mod exports;
 pub mod headers;
 pub mod imports;
 pub mod mapper;
@@ -27,7 +28,10 @@ pub mod relocations;
 pub mod tls;
 
 // Re-export primary types for ease of use
-pub use error::{ImportError, MappingError, PeError, RelocationError, TlsError};
+pub use error::{ExportError, ImportError, MappingError, PeError, RelocationError, TlsError};
+pub use exports::{
+    parse_export_directory, ExportDirectoryInfo, ExportEntry, ExportTarget, PeExportProvider,
+};
 pub use headers::{
     DataDirectory, DosHeader, OptionalHeader64, PeHeaders, SectionHeader, IMAGE_DOS_SIGNATURE,
     IMAGE_FILE_MACHINE_AMD64, IMAGE_NT_OPTIONAL_HDR64_MAGIC, IMAGE_NT_SIGNATURE,

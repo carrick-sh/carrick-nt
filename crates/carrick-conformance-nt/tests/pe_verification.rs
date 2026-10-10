@@ -20,7 +20,10 @@ fn get_workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+static BUILD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn get_or_build_hello_console() -> PathBuf {
+    let _guard = BUILD_LOCK.lock().unwrap();
     let ws = get_workspace_root();
     let candidate = ws.join("tests/oracle/fixtures/hello_console.exe");
     if candidate.exists() {

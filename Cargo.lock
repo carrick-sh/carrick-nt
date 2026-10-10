@@ -141,6 +141,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "carrick-nt-abi"
+version = "0.1.0"
+
+[[package]]
 name = "carrick-pe-loader"
 version = "0.1.0"
 dependencies = [
@@ -711,6 +715,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "carrick-conformance-nt",
+ "carrick-pe-loader",
  "clap",
 ]
 
