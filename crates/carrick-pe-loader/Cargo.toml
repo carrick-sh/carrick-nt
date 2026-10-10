@@ -1,0 +1,14 @@
+[package]
+name = "carrick-pe-loader"
+version = "0.1.0"
+edition = "2021"
+description = "Clean-room PE/COFF loader and memory mapping planner for Carrick NT"
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+
+[dev-dependencies]
+proptest = "1.4"

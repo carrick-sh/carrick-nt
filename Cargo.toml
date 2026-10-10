@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/carrick-conformance-nt",
+    "crates/carrick-pe-loader",
     "xtask",
 ]
 exclude = [
