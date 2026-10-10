@@ -14,10 +14,9 @@ AGENTS.md also applies, except where this file is stricter.
   Conformance is differential, as in Carrick's Linux Docker oracle.
 
 ## Gating
-- **Owner calls are still open before the first NT implementation commit**:
-  a similarity scan of AI-generated NT code against excluded corpora, and an IP
-  counsel review. Until the owner confirms both, this repository holds
-  governance and docs only.
+- The similarity scan of AI-generated NT code and the IP counsel review were
+  deferred by the owner on 2026-10-10. They do not gate implementation work.
+  The clean-room rules above still apply in full.
 - Dependencies point NT -> Carrick only.
 
 ## Workflow
