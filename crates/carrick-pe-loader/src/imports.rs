@@ -122,17 +122,51 @@ impl ExportProvider for StubExportProvider {
     }
 }
 
-/// Parses the import directory table and resolves all symbols via the ExportProvider.
+/// The import mechanism type: standard import or delay-loaded import.
+///
+/// Conforms to Microsoft PE and COFF Specification (Rev 11.0) Sections 6.4 (.idata)
+/// and 6.6 (Delay-Load Directory Table).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ImportKind {
+    /// Standard dynamic link import from .idata (IMAGE_DIRECTORY_ENTRY_IMPORT).
+    Standard,
+    /// Delay-loaded dynamic link import from .didat (IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT).
+    DelayLoad,
+}
+
+impl fmt::Display for ImportKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ImportKind::Standard => write!(f, "standard"),
+            ImportKind::DelayLoad => write!(f, "delay-load"),
+        }
+    }
+}
+
+/// A parsed import entry without symbol resolution.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct RawImport {
+    /// Name of the target DLL or API set (e.g. "KERNEL32.dll" or "api-ms-win-core-synch-l1-2-0.dll").
+    pub dll_name: String,
+    /// Imported function name or ordinal.
+    pub symbol: ImportSymbol,
+    /// Import mechanism: standard or delay-load.
+    pub kind: ImportKind,
+    /// Optional ordinal hint from IMAGE_IMPORT_BY_NAME if imported by name.
+    pub hint: Option<u16>,
+    /// RVA in the IAT where the address will be loaded.
+    pub iat_rva: u32,
+}
+
+/// Parses the standard import directory (.idata) without resolving symbols.
 ///
 /// Conforms to Microsoft PE and COFF Specification (Rev 11.0) Section 6.4: The .idata Section.
-pub fn parse_and_resolve_imports<P: ExportProvider>(
+pub fn parse_import_directory(
     headers: &PeHeaders,
     file_bytes: &[u8],
-    actual_base: VirtualAddress,
-    provider: &P,
-) -> Result<Vec<ImportBinding>, ImportError> {
+) -> Result<Vec<RawImport>, ImportError> {
     let import_dir = match headers.data_directory(IMAGE_DIRECTORY_ENTRY_IMPORT) {
-        Some(d) if d.is_present() => d,
+        Some(d) if d.is_present() && d.size > 0 => d,
         _ => return Ok(Vec::new()),
     };
 
@@ -156,7 +190,7 @@ pub fn parse_and_resolve_imports<P: ExportProvider>(
         });
     }
 
-    let mut bindings = Vec::new();
+    let mut imports = Vec::new();
     let mut desc_offset = dir_offset;
 
     // Loop through IMAGE_IMPORT_DESCRIPTOR entries (20 bytes each)
@@ -179,6 +213,10 @@ pub fn parse_and_resolve_imports<P: ExportProvider>(
         let original_first_thunk = u32::from_le_bytes(desc[0..4].try_into().unwrap());
         let name_rva = u32::from_le_bytes(desc[12..16].try_into().unwrap());
         let first_thunk = u32::from_le_bytes(desc[16..20].try_into().unwrap());
+
+        if name_rva == 0 && original_first_thunk == 0 && first_thunk == 0 {
+            break;
+        }
 
         // Validate that DLL Name RVA points into a mapped section
         if headers.find_section_by_rva(name_rva).is_none() {
@@ -230,10 +268,10 @@ pub fn parse_and_resolve_imports<P: ExportProvider>(
                 break;
             }
 
-            let symbol = if (thunk_entry & 0x8000_0000_0000_0000) != 0 {
+            let (symbol, hint) = if (thunk_entry & 0x8000_0000_0000_0000) != 0 {
                 // Bit 63 is set: import by ordinal
                 let ordinal = (thunk_entry & 0xFFFF) as u16;
-                ImportSymbol::Ordinal(ordinal)
+                (ImportSymbol::Ordinal(ordinal), None)
             } else {
                 // Bit 63 is clear: import by name (RVA points to IMAGE_IMPORT_BY_NAME)
                 let ibn_rva = (thunk_entry & 0x7FFF_FFFF) as u32;
@@ -252,6 +290,9 @@ pub fn parse_and_resolve_imports<P: ExportProvider>(
                     return Err(ImportError::UnmappedImportByNameRva(ibn_rva));
                 }
 
+                let parsed_hint =
+                    u16::from_le_bytes(file_bytes[ibn_offset..ibn_offset + 2].try_into().unwrap());
+
                 let name_start = ibn_offset + 2;
                 let mut name_end = name_start;
                 while name_end < file_bytes.len() && file_bytes[name_end] != 0 {
@@ -263,13 +304,9 @@ pub fn parse_and_resolve_imports<P: ExportProvider>(
 
                 let sym_name =
                     String::from_utf8_lossy(&file_bytes[name_start..name_end]).into_owned();
-                ImportSymbol::Named(sym_name)
+                (ImportSymbol::Named(sym_name), Some(parsed_hint))
             };
 
-            // Resolve symbol via ExportProvider
-            let resolved_va = provider.resolve(&dll_name, &symbol)?;
-
-            // IAT slot RVA and VA
             let iat_rva = first_thunk
                 .checked_add(
                     entry_index
@@ -278,16 +315,12 @@ pub fn parse_and_resolve_imports<P: ExportProvider>(
                 )
                 .ok_or(ImportError::UnmappedThunkRva(first_thunk))?;
 
-            let iat_va = actual_base
-                .checked_add(iat_rva as u64)
-                .ok_or(ImportError::UnmappedThunkRva(iat_rva))?;
-
-            bindings.push(ImportBinding {
+            imports.push(RawImport {
                 dll_name: dll_name.clone(),
                 symbol,
+                kind: ImportKind::Standard,
+                hint,
                 iat_rva,
-                iat_va,
-                resolved_va,
             });
 
             thunk_offset += 8;
@@ -295,6 +328,215 @@ pub fn parse_and_resolve_imports<P: ExportProvider>(
         }
 
         desc_offset += 20;
+    }
+
+    Ok(imports)
+}
+
+/// Parses the delay-load import directory (.didat) without resolving symbols.
+///
+/// Conforms strictly to Microsoft PE and COFF Specification (Rev 11.0) Section 6.6:
+/// "The Delay-Load Directory Table (Image Only)".
+pub fn parse_delay_import_directory(
+    headers: &PeHeaders,
+    file_bytes: &[u8],
+) -> Result<Vec<RawImport>, ImportError> {
+    use crate::headers::IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT;
+
+    let delay_dir = match headers.data_directory(IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT) {
+        Some(d) if d.is_present() && d.size > 0 => d,
+        _ => return Ok(Vec::new()),
+    };
+
+    let dir_rva = delay_dir.virtual_address;
+    let dir_size = delay_dir.size as usize;
+
+    let dir_offset = headers
+        .rva_to_file_offset(dir_rva, file_bytes.len())
+        .map_err(|_| ImportError::DirectoryOutOfBounds {
+            rva: dir_rva,
+            size: delay_dir.size,
+        })?;
+
+    if dir_offset
+        .checked_add(dir_size)
+        .is_none_or(|end| end > file_bytes.len())
+    {
+        return Err(ImportError::DirectoryOutOfBounds {
+            rva: dir_rva,
+            size: delay_dir.size,
+        });
+    }
+
+    let mut imports = Vec::new();
+    let mut desc_offset = dir_offset;
+
+    // Loop through IMAGE_DELAYLOAD_DESCRIPTOR entries (32 bytes each)
+    loop {
+        if desc_offset
+            .checked_add(32)
+            .is_none_or(|end| end > file_bytes.len())
+        {
+            break;
+        }
+
+        let desc = &file_bytes[desc_offset..desc_offset + 32];
+        // Terminated by an all-zero descriptor
+        if desc.iter().all(|&b| b == 0) {
+            break;
+        }
+
+        let dll_name_rva = u32::from_le_bytes(desc[4..8].try_into().unwrap());
+        let iat_rva_base = u32::from_le_bytes(desc[12..16].try_into().unwrap());
+        let int_rva = u32::from_le_bytes(desc[16..20].try_into().unwrap());
+
+        if dll_name_rva == 0 {
+            break;
+        }
+
+        // Validate DLL Name RVA
+        if headers.find_section_by_rva(dll_name_rva).is_none() {
+            return Err(ImportError::UnmappedDllNameRva(dll_name_rva));
+        }
+
+        let dll_name_offset = headers
+            .rva_to_file_offset(dll_name_rva, file_bytes.len())
+            .map_err(|_| ImportError::UnmappedDllNameRva(dll_name_rva))?;
+
+        let mut end = dll_name_offset;
+        while end < file_bytes.len() && file_bytes[end] != 0 {
+            end += 1;
+        }
+        if end >= file_bytes.len() {
+            return Err(ImportError::InvalidDllName(dll_name_offset));
+        }
+        let dll_name = String::from_utf8_lossy(&file_bytes[dll_name_offset..end]).into_owned();
+
+        // Use ImportNameTable (INT) if present, fallback to ImportAddressTable (IAT)
+        let thunk_rva = if int_rva != 0 { int_rva } else { iat_rva_base };
+
+        if thunk_rva != 0 {
+            if headers.find_section_by_rva(thunk_rva).is_none() {
+                return Err(ImportError::UnmappedThunkRva(thunk_rva));
+            }
+
+            let mut thunk_offset = headers
+                .rva_to_file_offset(thunk_rva, file_bytes.len())
+                .map_err(|_| ImportError::UnmappedThunkRva(thunk_rva))?;
+
+            let mut entry_index = 0u32;
+
+            loop {
+                if thunk_offset + 8 > file_bytes.len() {
+                    break;
+                }
+
+                let thunk_entry = u64::from_le_bytes(
+                    file_bytes[thunk_offset..thunk_offset + 8]
+                        .try_into()
+                        .unwrap(),
+                );
+                if thunk_entry == 0 {
+                    break;
+                }
+
+                let (symbol, hint) = if (thunk_entry & 0x8000_0000_0000_0000) != 0 {
+                    let ordinal = (thunk_entry & 0xFFFF) as u16;
+                    (ImportSymbol::Ordinal(ordinal), None)
+                } else {
+                    let ibn_rva = (thunk_entry & 0x7FFF_FFFF) as u32;
+
+                    if headers.find_section_by_rva(ibn_rva).is_none() {
+                        return Err(ImportError::UnmappedImportByNameRva(ibn_rva));
+                    }
+
+                    let ibn_offset = headers
+                        .rva_to_file_offset(ibn_rva, file_bytes.len())
+                        .map_err(|_| ImportError::UnmappedImportByNameRva(ibn_rva))?;
+
+                    if ibn_offset + 2 >= file_bytes.len() {
+                        return Err(ImportError::UnmappedImportByNameRva(ibn_rva));
+                    }
+
+                    let parsed_hint = u16::from_le_bytes(
+                        file_bytes[ibn_offset..ibn_offset + 2].try_into().unwrap(),
+                    );
+
+                    let name_start = ibn_offset + 2;
+                    let mut name_end = name_start;
+                    while name_end < file_bytes.len() && file_bytes[name_end] != 0 {
+                        name_end += 1;
+                    }
+                    if name_end >= file_bytes.len() {
+                        return Err(ImportError::UnmappedImportByNameRva(ibn_rva));
+                    }
+
+                    let sym_name =
+                        String::from_utf8_lossy(&file_bytes[name_start..name_end]).into_owned();
+                    (ImportSymbol::Named(sym_name), Some(parsed_hint))
+                };
+
+                let iat_rva = if iat_rva_base != 0 {
+                    iat_rva_base.wrapping_add(entry_index.wrapping_mul(8))
+                } else {
+                    0
+                };
+
+                imports.push(RawImport {
+                    dll_name: dll_name.clone(),
+                    symbol,
+                    kind: ImportKind::DelayLoad,
+                    hint,
+                    iat_rva,
+                });
+
+                thunk_offset += 8;
+                entry_index += 1;
+            }
+        }
+
+        desc_offset += 32;
+    }
+
+    Ok(imports)
+}
+
+/// Parses both standard and delay-load imports from the PE file.
+pub fn parse_all_imports(
+    headers: &PeHeaders,
+    file_bytes: &[u8],
+) -> Result<Vec<RawImport>, ImportError> {
+    let mut all = parse_import_directory(headers, file_bytes)?;
+    let mut delay = parse_delay_import_directory(headers, file_bytes)?;
+    all.append(&mut delay);
+    Ok(all)
+}
+
+/// Parses the import directory table and resolves all symbols via the ExportProvider.
+///
+/// Conforms to Microsoft PE and COFF Specification (Rev 11.0) Section 6.4: The .idata Section.
+pub fn parse_and_resolve_imports<P: ExportProvider>(
+    headers: &PeHeaders,
+    file_bytes: &[u8],
+    actual_base: VirtualAddress,
+    provider: &P,
+) -> Result<Vec<ImportBinding>, ImportError> {
+    let raw_imports = parse_import_directory(headers, file_bytes)?;
+    let mut bindings = Vec::with_capacity(raw_imports.len());
+
+    for raw in raw_imports {
+        let resolved_va = provider.resolve(&raw.dll_name, &raw.symbol)?;
+        let iat_va = actual_base
+            .checked_add(raw.iat_rva as u64)
+            .ok_or(ImportError::UnmappedThunkRva(raw.iat_rva))?;
+
+        bindings.push(ImportBinding {
+            dll_name: raw.dll_name,
+            symbol: raw.symbol,
+            iat_rva: raw.iat_rva,
+            iat_va,
+            resolved_va,
+        });
     }
 
     Ok(bindings)

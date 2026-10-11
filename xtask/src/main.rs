@@ -1,5 +1,8 @@
 //! Automation task runner for carrick-nt: fixture builds, guest DLLs, and PE validation.
 
+use carrick_conformance_nt::census::{
+    build_census_report, generate_markdown_report, scan_binary_file, ProgramCensus,
+};
 use carrick_conformance_nt::pe::verify_hello_console_pe;
 use carrick_conformance_nt::receipt::compute_sha256;
 use carrick_pe_loader::exports::{parse_export_directory, PeExportProvider};
@@ -47,6 +50,19 @@ enum Commands {
     All {
         #[arg(long, default_value = "x86_64-pc-windows-msvc")]
         target: String,
+    },
+    /// Builds clean-room census fixtures and executes the NT import census (NT-014)
+    ImportCensus {
+        #[arg(long, default_value = "/home/carrick/nt-census-inputs/system32")]
+        system32_dir: PathBuf,
+        #[arg(long, default_value = "docs/census/import-census.md")]
+        output_md: PathBuf,
+        #[arg(long, default_value = "docs/census/import-census.json")]
+        output_json: PathBuf,
+        #[arg(long, default_value = "cargo xtask import-census")]
+        rerun_cmd: String,
+        #[arg(long, default_value = "30")]
+        top_system32_n: usize,
     },
 }
 
@@ -126,6 +142,25 @@ fn main() -> ExitCode {
             println!("\nAll tasks passed (build + PE verify + guest DLLs verify)!");
             ExitCode::SUCCESS
         }
+        Commands::ImportCensus {
+            system32_dir,
+            output_md,
+            output_json,
+            rerun_cmd,
+            top_system32_n,
+        } => match run_import_census(
+            &system32_dir,
+            &output_md,
+            &output_json,
+            &rerun_cmd,
+            top_system32_n,
+        ) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("Import census failed: {e}");
+                ExitCode::FAILURE
+            }
+        },
     }
 }
 
@@ -472,5 +507,234 @@ pub fn verify_guest_dlls(target: &str) -> Result<(), String> {
         );
     }
 
+    Ok(())
+}
+
+pub fn build_cleanroom_census_fixtures() -> Result<PathBuf, String> {
+    let out_dir = PathBuf::from("target/census-fixtures");
+    fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+
+    println!(
+        "Building clean-room census fixtures in {}...",
+        out_dir.display()
+    );
+
+    // 1. Build hello_console fixture
+    let hello_path = build_fixtures("x86_64-pc-windows-msvc")?;
+    fs::copy(&hello_path, out_dir.join("hello_console.exe")).map_err(|e| e.to_string())?;
+
+    // 2. Build C fixtures via clang/lld
+    println!("Compiling clean-room C fixtures via clang...");
+    let c_fixtures = [
+        (
+            "crates/carrick-conformance-nt/fixtures/cleanroom_inputs/c/hello.c",
+            "c_hello.exe",
+        ),
+        (
+            "crates/carrick-conformance-nt/fixtures/cleanroom_inputs/c/file_io.c",
+            "c_file_io.exe",
+        ),
+        (
+            "crates/carrick-conformance-nt/fixtures/cleanroom_inputs/c/env_argv.c",
+            "c_env_argv.exe",
+        ),
+        (
+            "crates/carrick-conformance-nt/fixtures/cleanroom_inputs/c/thread_spawn.c",
+            "c_thread_spawn.exe",
+        ),
+    ];
+
+    let kernel32_lib = "/home/carrick/.xwin/sdk/lib/um/x64/kernel32.lib";
+    for (src, dest_name) in &c_fixtures {
+        let dest = out_dir.join(dest_name);
+        let status = Command::new("clang")
+            .arg("-target")
+            .arg("x86_64-pc-windows-msvc")
+            .arg("-nostdlib")
+            .arg("-fuse-ld=lld-link")
+            .arg(src)
+            .arg("-o")
+            .arg(&dest)
+            .arg(kernel32_lib)
+            .arg("-Wl,/entry:mainCRTStartup,/subsystem:console")
+            .status()
+            .map_err(|e| format!("Failed to spawn clang for {src}: {e}"))?;
+
+        if !status.success() {
+            return Err(format!(
+                "clang compilation of {src} failed with status {status}"
+            ));
+        }
+        println!("  Compiled: {}", dest_name);
+    }
+
+    // 3. Build Rust GNU std fixtures
+    println!("Compiling clean-room Rust std fixtures for x86_64-pc-windows-gnu...");
+    let rust_manifest = "crates/carrick-conformance-nt/fixtures/cleanroom_inputs/rust/Cargo.toml";
+    let status = Command::new("cargo")
+        .arg("build")
+        .arg("--manifest-path")
+        .arg(rust_manifest)
+        .arg("--target")
+        .arg("x86_64-pc-windows-gnu")
+        .arg("--release")
+        .status()
+        .map_err(|e| format!("Failed to run cargo build for windows-gnu fixtures: {e}"))?;
+
+    if !status.success() {
+        return Err(format!(
+            "cargo build for windows-gnu fixtures failed: {status}"
+        ));
+    }
+
+    let gnu_bin_dir = PathBuf::from(
+        "crates/carrick-conformance-nt/fixtures/cleanroom_inputs/rust/target/x86_64-pc-windows-gnu/release",
+    );
+    for bin_name in &[
+        "rust_hello",
+        "rust_file_io",
+        "rust_env_argv",
+        "rust_thread_spawn",
+    ] {
+        let src = gnu_bin_dir.join(format!("{bin_name}.exe"));
+        let dst = out_dir.join(format!("{bin_name}_gnu.exe"));
+        fs::copy(&src, &dst).map_err(|e| format!("Failed to copy {}: {e}", src.display()))?;
+        println!("  Staged: {}", dst.display());
+    }
+
+    // 4. Build Rust MSVC std fixtures
+    println!("Compiling clean-room Rust std fixtures for x86_64-pc-windows-msvc...");
+    let msvc_rustflags = "-C linker=rust-lld -L /home/carrick/.xwin/crt/lib/x64 -L /home/carrick/.xwin/sdk/lib/um/x64 -L /home/carrick/.xwin/sdk/lib/ucrt/x64";
+    let status = Command::new("cargo")
+        .arg("build")
+        .arg("--manifest-path")
+        .arg(rust_manifest)
+        .arg("--target")
+        .arg("x86_64-pc-windows-msvc")
+        .arg("--release")
+        .env("RUSTFLAGS", msvc_rustflags)
+        .status()
+        .map_err(|e| format!("Failed to run cargo build for windows-msvc fixtures: {e}"))?;
+
+    if !status.success() {
+        return Err(format!(
+            "cargo build for windows-msvc fixtures failed: {status}"
+        ));
+    }
+
+    let msvc_bin_dir = PathBuf::from(
+        "crates/carrick-conformance-nt/fixtures/cleanroom_inputs/rust/target/x86_64-pc-windows-msvc/release",
+    );
+    for bin_name in &[
+        "rust_hello",
+        "rust_file_io",
+        "rust_env_argv",
+        "rust_thread_spawn",
+    ] {
+        let src = msvc_bin_dir.join(format!("{bin_name}.exe"));
+        let dst = out_dir.join(format!("{bin_name}_msvc.exe"));
+        fs::copy(&src, &dst).map_err(|e| format!("Failed to copy {}: {e}", src.display()))?;
+        println!("  Staged: {}", dst.display());
+    }
+
+    Ok(out_dir)
+}
+
+pub fn run_import_census(
+    system32_dir: &Path,
+    output_md: &Path,
+    output_json: &Path,
+    rerun_cmd: &str,
+    top_system32_n: usize,
+) -> Result<(), String> {
+    println!("=== Running NT Import Census (NT-014) ===");
+
+    let cleanroom_dir = build_cleanroom_census_fixtures()?;
+
+    // Check Go
+    let go_check = Command::new("which").arg("go").output();
+    let go_status = match go_check {
+        Ok(out) if out.status.success() => "Go compiler installed on host.",
+        _ => "Go compiler not installed on host (`which go` returned not found); Go hello omitted.",
+    };
+    println!("Go toolchain check: {go_status}");
+
+    let mut scanned_programs: Vec<ProgramCensus> = Vec::new();
+
+    // Scan clean-room programs
+    let mut cr_entries: Vec<PathBuf> = Vec::new();
+    let read_cr = fs::read_dir(&cleanroom_dir).map_err(|e| e.to_string())?;
+    for entry in read_cr {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let p = entry.path();
+        if p.is_file() {
+            let ext = p
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if ext == "exe" || ext == "com" {
+                cr_entries.push(p);
+            }
+        }
+    }
+    cr_entries.sort();
+    for p in cr_entries {
+        let census = scan_binary_file(&p, "clean_room_built").map_err(|e| e.to_string())?;
+        scanned_programs.push(census);
+    }
+
+    // Scan system32 programs
+    if !system32_dir.exists() {
+        return Err(format!(
+            "System32 directory not found at: {}",
+            system32_dir.display()
+        ));
+    }
+    let mut sys32_entries: Vec<PathBuf> = Vec::new();
+    let read_sys32 = fs::read_dir(system32_dir).map_err(|e| e.to_string())?;
+    for entry in read_sys32 {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let p = entry.path();
+        if p.is_file() {
+            let ext = p
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if ext == "exe" || ext == "com" {
+                sys32_entries.push(p);
+            }
+        }
+    }
+    sys32_entries.sort();
+    for p in sys32_entries {
+        let census = scan_binary_file(&p, "system32_console").map_err(|e| e.to_string())?;
+        scanned_programs.push(census);
+    }
+
+    println!(
+        "Scanned {} programs total. Aggregating...",
+        scanned_programs.len()
+    );
+
+    let report = build_census_report(scanned_programs, rerun_cmd, go_status, top_system32_n);
+
+    if let Some(parent) = output_json.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    if let Some(parent) = output_md.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let json_content = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
+    fs::write(output_json, json_content).map_err(|e| e.to_string())?;
+    println!("Wrote JSON census to: {}", output_json.display());
+
+    let md_content = generate_markdown_report(&report);
+    fs::write(output_md, md_content).map_err(|e| e.to_string())?;
+    println!("Wrote Markdown census to: {}", output_md.display());
+
+    println!("NT Import Census complete and verified!");
     Ok(())
 }

@@ -37,7 +37,11 @@ pub use headers::{
     IMAGE_FILE_MACHINE_AMD64, IMAGE_NT_OPTIONAL_HDR64_MAGIC, IMAGE_NT_SIGNATURE,
     IMAGE_SUBSYSTEM_WINDOWS_CUI,
 };
-pub use imports::{ExportProvider, ImportSymbol, StubExportProvider};
+pub use imports::{
+    parse_all_imports, parse_and_resolve_imports, parse_delay_import_directory,
+    parse_import_directory, ExportProvider, ImportKind, ImportSymbol, RawImport,
+    StubExportProvider,
+};
 pub use mapper::PeLoader;
 pub use plan::{
     FileRange, ImportBinding, MappedRegion, MappingPlan, PageProtection, RelocationDelta,
