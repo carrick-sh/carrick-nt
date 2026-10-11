@@ -19,7 +19,13 @@ param (
     [string]$ImageTag = "mcr.microsoft.com/windows/nanoserver:ltsc2025@sha256:15760261db306980fd96acf7e2c73779eaaeefdff289339b9526295c88957e56",
 
     [Parameter(Mandatory=$false)]
-    [int]$TimeoutSeconds = 30
+    [int]$TimeoutSeconds = 30,
+
+    [Parameter(Mandatory=$false)]
+    [string]$AppArgs = "",
+
+    [Parameter(Mandatory=$false)]
+    [string[]]$EnvVars = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -69,9 +75,29 @@ try {
     $StdoutStream = [System.IO.MemoryStream]::new()
     $StderrStream = [System.IO.MemoryStream]::new()
 
+    $EnvFlags = ""
+    if ($EnvVars) {
+        $FlatEnvs = @()
+        foreach ($e in $EnvVars) {
+            if ($e) {
+                $FlatEnvs += ($e -split ',')
+            }
+        }
+        if ($FlatEnvs.Count -gt 0) {
+            $EnvFlags = ($FlatEnvs | ForEach-Object { "-e $_" }) -join " "
+        }
+    }
+
+    $ArgSuffix = ""
+    if ($AppArgs) {
+        $ArgSuffix = " $AppArgs"
+    }
+
+    $DockerArgs = "run --name $ContainerName --rm $EnvFlags -v `"${TempHostDir}:C:\app:ro`" $ImageTag C:\app\$ExeFileName$ArgSuffix"
+
     $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
     $ProcessInfo.FileName = "docker"
-    $ProcessInfo.Arguments = "run --name $ContainerName --rm -v `"${TempHostDir}:C:\app:ro`" $ImageTag C:\app\$ExeFileName"
+    $ProcessInfo.Arguments = ($DockerArgs -replace '\s+', ' ').Trim()
     $ProcessInfo.RedirectStandardOutput = $true
     $ProcessInfo.RedirectStandardError = $true
     $ProcessInfo.UseShellExecute = $false
@@ -118,8 +144,13 @@ try {
         }
     }
 
+    $CommandList = @($ExeFileName)
+    if ($AppArgs) {
+        $CommandList += ($AppArgs -split '\s+')
+    }
+
     $ExecutionDict = [ordered]@{
-        "command" = @($ExeFileName)
+        "command" = $CommandList
         "exit_code" = $ExitCode
         "stdout_raw" = $StdoutRaw
         "stdout_base64" = $StdoutBase64

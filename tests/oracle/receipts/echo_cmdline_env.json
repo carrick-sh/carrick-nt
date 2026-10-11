@@ -1,0 +1,28 @@
+{
+  "$schema": "https://carrick.dev/schemas/oracle-receipt-v1.json",
+  "metadata": {
+    "test_name": "echo_cmdline_env",
+    "lane": "nt",
+    "target_arch": "x86_64",
+    "oracle_host": {
+      "os": "Microsoft Windows Server 2025 Standard Evaluation",
+      "build": "26100.33438",
+      "container_image": "mcr.microsoft.com/windows/nanoserver:ltsc2025@sha256:15760261db306980fd96acf7e2c73779eaaeefdff289339b9526295c88957e56"
+    },
+    "source_hash_sha256": "2f6cac05f39ccbf037500b03d336d03fdbabe8e37354fbd3f41e90c06bc616b3",
+    "binary_hash_sha256": "67679e0d48b62c06bc2440f3ce726ec0fc520d3ce9558a932655623a6c63b4ab",
+    "captured_at_utc": "2026-10-11T15:55:57Z"
+  },
+  "execution": {
+    "command": [
+      "echo_cmdline_env.exe",
+      "arg1",
+      "arg2"
+    ],
+    "exit_code": 0,
+    "stdout_raw": "CommandLine: C:\\app\\echo_cmdline_env.exe arg1 arg2\r\nCARRICK_TEST: differential_witness\r\n",
+    "stdout_base64": "Q29tbWFuZExpbmU6IEM6XGFwcFxlY2hvX2NtZGxpbmVfZW52LmV4ZSBhcmcxIGFyZzINCkNBUlJJQ0tfVEVTVDogZGlmZmVyZW50aWFsX3dpdG5lc3MNCg==",
+    "stderr_raw": "",
+    "stderr_base64": ""
+  }
+}

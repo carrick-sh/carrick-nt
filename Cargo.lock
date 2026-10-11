@@ -149,6 +149,7 @@ version = "0.1.0"
 name = "carrick-pe-loader"
 version = "0.1.0"
 dependencies = [
+ "carrick-nt-abi",
  "proptest",
 ]
 
