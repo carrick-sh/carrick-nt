@@ -25,8 +25,8 @@ use carrick_nt_abi::{GuestPtr, GuestVa, NtHandle, NtServiceId, NtStatus, UserLen
 use carrick_personality_nt::handle_table::access_rights;
 use carrick_personality_nt::{
     encode_nt_status_return, encode_return, service_error_to_ntstatus, BufferOutputSink,
-    CarrickUserMemory, ControlFlow, HandleObject, HandleTable, NtCall, NtDispatcher, NtFrame,
-    NtPersonality, SimulatedUserMemory, UserMemory, NT_X64_STACK_ARG_BASE_OFFSET,
+    ControlFlow, HandleObject, HandleTable, NtCall, NtDispatcher, NtFrame, NtPersonality,
+    SimulatedUserMemory, UserMemory, NT_X64_STACK_ARG_BASE_OFFSET,
 };
 
 // ============================================================================
@@ -885,7 +885,7 @@ fn test_differential_oracle_receipt_conformance() {
 }
 
 // ============================================================================
-// 6. CarrickUserMemory Adapter and Error Mapping Tests
+// 6. Carrick UserMemory Adapter and Error Mapping Tests
 // ============================================================================
 
 #[test]
@@ -926,7 +926,7 @@ fn test_carrick_user_memory_read_write_and_faults() {
     let mut arch = Arch::new(backend);
     let mut cx = CallContext::new(&mut arch, &frame);
 
-    let mut user_mem = CarrickUserMemory::new(cx.user());
+    let mut user_mem = cx.user();
 
     // 1. Successful read
     let mut read_buf = [0u8; 30];
@@ -1053,7 +1053,7 @@ fn test_dispatch_nt_write_file_with_carrick_user_memory() {
     let buf_va = 0x0000_0000_5000_1000u64;
     let iosb_va = 0x0000_0000_5000_2000u64;
 
-    let payload = b"Data processed through CarrickUserMemory adapter!";
+    let payload = b"Data processed through carrick-core UserMemory handle!";
 
     // Backend pages
     backend.map_page_with_perms(stack_va, true, false); // stack
@@ -1089,14 +1089,14 @@ fn test_dispatch_nt_write_file_with_carrick_user_memory() {
     let decoded = personality.decode(&mut cx).expect("decode must succeed");
 
     let sink = BufferOutputSink::new();
-    let memory = CarrickUserMemory::new(cx.user());
+    let memory = cx.user();
     let mut dispatcher = NtDispatcher::new(handle_table, memory, sink);
 
     let flow = dispatcher.dispatch(&decoded);
     assert_eq!(flow, ControlFlow::Return(NtStatus::STATUS_SUCCESS));
     assert_eq!(dispatcher.sink().as_slice(), payload);
 
-    // Verify IO_STATUS_BLOCK read back through CarrickUserMemory
+    // Verify IO_STATUS_BLOCK read back through UserMemory handle
     let mut iosb_bytes = [0u8; 16];
     dispatcher
         .memory_mut()
@@ -1124,7 +1124,7 @@ fn test_dispatch_nt_write_file_faults_on_unmapped_buffer() {
 
     let handle_table = HandleTable::with_standard_handles(100, 101);
     let sink = BufferOutputSink::new();
-    let memory = CarrickUserMemory::new(cx.user());
+    let memory = cx.user();
     let mut dispatcher = NtDispatcher::new(handle_table, memory, sink);
 
     let call = NtCall::WriteFile {
@@ -1162,7 +1162,7 @@ fn test_dispatch_nt_write_file_faults_on_unwritable_iosb() {
 
     let handle_table = HandleTable::with_standard_handles(100, 101);
     let sink = BufferOutputSink::new();
-    let memory = CarrickUserMemory::new(cx.user());
+    let memory = cx.user();
     let mut dispatcher = NtDispatcher::new(handle_table, memory, sink);
 
     let call = NtCall::WriteFile {

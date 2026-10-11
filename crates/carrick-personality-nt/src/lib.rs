@@ -18,7 +18,7 @@ pub mod handle_table;
 pub mod memory;
 
 pub use call::NtCall;
-pub use carrick_memory::{service_error_to_ntstatus, CarrickUserMemory};
+pub use carrick_memory::service_error_to_ntstatus;
 pub use decode::{decode_nt_call, read_nt_argument, NT_X64_STACK_ARG_BASE_OFFSET};
 #[cfg(feature = "std")]
 pub use dispatch::StdOutputSink;

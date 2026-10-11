@@ -26,67 +26,11 @@ pub const fn service_error_to_ntstatus(err: ServiceError) -> NtStatus {
     }
 }
 
-/// Adapter implementing the NT personality `UserMemory` port trait over Carrick's
-/// personality-facing user copy handle (`carrick_core::personality::UserMemory`).
-pub struct CarrickUserMemory<'a, A: MmuArch> {
-    inner: CarrickCoreUserMemory<'a, A>,
-}
-
-impl<'a, A: MmuArch> CarrickUserMemory<'a, A> {
-    /// Creates a new `CarrickUserMemory` adapter wrapping Carrick's `UserMemory` handle.
-    pub fn new(inner: CarrickCoreUserMemory<'a, A>) -> Self {
-        Self { inner }
-    }
-
-    /// Accesses the underlying Carrick user memory handle.
-    pub fn inner(&self) -> &CarrickCoreUserMemory<'a, A> {
-        &self.inner
-    }
-
-    /// Mutably accesses the underlying Carrick user memory handle.
-    pub fn inner_mut(&mut self) -> &mut CarrickCoreUserMemory<'a, A> {
-        &mut self.inner
-    }
-
-    /// Unwraps the adapter, returning the inner Carrick user memory handle.
-    pub fn into_inner(self) -> CarrickCoreUserMemory<'a, A> {
-        self.inner
-    }
-}
-
-impl<'a, A: MmuArch> From<CarrickCoreUserMemory<'a, A>> for CarrickUserMemory<'a, A> {
-    fn from(inner: CarrickCoreUserMemory<'a, A>) -> Self {
-        Self::new(inner)
-    }
-}
-
-impl<'a, A: MmuArch + DefaultMmOwner> UserMemory for CarrickUserMemory<'a, A>
-where
-    ServiceError: From<A::Error>,
-{
-    fn read_bytes(&mut self, va: GuestVa, buf: &mut [u8]) -> Result<(), NtStatus> {
-        if buf.is_empty() {
-            return Ok(());
-        }
-        let range = UserRange::checked(UserVa::new(va.as_u64()), GuestLen::new(buf.len() as u64))
-            .ok_or(NtStatus::STATUS_ACCESS_VIOLATION)?;
-        self.inner
-            .copy_in(range, buf)
-            .map_err(service_error_to_ntstatus)?;
-        Ok(())
-    }
-
-    fn write_bytes(&mut self, va: GuestVa, buf: &[u8]) -> Result<(), NtStatus> {
-        if buf.is_empty() {
-            return Ok(());
-        }
-        let range = UserRange::checked(UserVa::new(va.as_u64()), GuestLen::new(buf.len() as u64))
-            .ok_or(NtStatus::STATUS_ACCESS_VIOLATION)?;
-        self.inner
-            .copy_out(range, buf)
-            .map_err(service_error_to_ntstatus)?;
-        Ok(())
-    }
+/// Constructs a validated `UserRange` from guest virtual address and byte length.
+#[inline]
+fn user_range(va: GuestVa, len: usize) -> Result<UserRange, NtStatus> {
+    UserRange::checked(UserVa::new(va.as_u64()), GuestLen::new(len as u64))
+        .ok_or(NtStatus::STATUS_ACCESS_VIOLATION)
 }
 
 impl<'a, A: MmuArch + DefaultMmOwner> UserMemory for CarrickCoreUserMemory<'a, A>
@@ -97,8 +41,7 @@ where
         if buf.is_empty() {
             return Ok(());
         }
-        let range = UserRange::checked(UserVa::new(va.as_u64()), GuestLen::new(buf.len() as u64))
-            .ok_or(NtStatus::STATUS_ACCESS_VIOLATION)?;
+        let range = user_range(va, buf.len())?;
         self.copy_in(range, buf)
             .map_err(service_error_to_ntstatus)?;
         Ok(())
@@ -108,8 +51,7 @@ where
         if buf.is_empty() {
             return Ok(());
         }
-        let range = UserRange::checked(UserVa::new(va.as_u64()), GuestLen::new(buf.len() as u64))
-            .ok_or(NtStatus::STATUS_ACCESS_VIOLATION)?;
+        let range = user_range(va, buf.len())?;
         self.copy_out(range, buf)
             .map_err(service_error_to_ntstatus)?;
         Ok(())
