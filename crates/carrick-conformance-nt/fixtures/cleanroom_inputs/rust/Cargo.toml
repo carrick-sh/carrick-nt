@@ -1,0 +1,22 @@
+[package]
+name = "cleanroom_rust_fixtures"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[[bin]]
+name = "rust_hello"
+path = "src/bin/hello.rs"
+
+[[bin]]
+name = "rust_file_io"
+path = "src/bin/file_io.rs"
+
+[[bin]]
+name = "rust_env_argv"
+path = "src/bin/env_argv.rs"
+
+[[bin]]
+name = "rust_thread_spawn"
+path = "src/bin/thread_spawn.rs"

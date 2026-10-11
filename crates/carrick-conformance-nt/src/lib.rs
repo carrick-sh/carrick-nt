@@ -6,11 +6,17 @@
 //! - `pe`: clean-room PE32+ header, section, and import validator.
 //! - `harness`: automated Windows container test capture harness.
 
+pub mod census;
 pub mod comparator;
 pub mod harness;
 pub mod pe;
 pub mod receipt;
 
+pub use census::{
+    build_census_report, generate_markdown_report, parse_api_set_name, scan_binary_bytes,
+    scan_binary_file, ApiSetContract, ApiSetGroup, CensusError, CensusReport, DiscoveredImport,
+    FirstTargets, ProgramCensus, RankedImport,
+};
 pub use comparator::{ComparisonMismatch, ExecutionObservation, ReceiptComparator};
 pub use harness::{
     classify_infrastructure_error, execute_capture, generate_execution_plan, CaptureConfig,

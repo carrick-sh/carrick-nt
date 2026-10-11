@@ -6,6 +6,7 @@ description = "Differential black-box oracle harness and receipt verification fo
 
 [dependencies]
 base64 = "0.22"
+carrick-pe-loader = { path = "../carrick-pe-loader" }
 clap = { version = "4.4", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -15,3 +16,7 @@ thiserror = "1.0"
 [[bin]]
 name = "carrick-oracle-capture"
 path = "src/bin/oracle_capture.rs"
+
+[[bin]]
+name = "carrick-import-census"
+path = "src/bin/import_census.rs"

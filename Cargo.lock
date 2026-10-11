@@ -133,6 +133,7 @@ name = "carrick-conformance-nt"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "carrick-pe-loader",
  "clap",
  "serde",
  "serde_json",
@@ -717,6 +718,7 @@ dependencies = [
  "carrick-conformance-nt",
  "carrick-pe-loader",
  "clap",
+ "serde_json",
 ]
 
 [[package]]
