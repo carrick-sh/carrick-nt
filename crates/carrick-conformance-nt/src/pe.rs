@@ -297,6 +297,30 @@ pub fn parse_pe(bytes: &[u8]) -> Result<PeImageInfo, PeParseError> {
 /// - Imported DLLs are strictly restricted to `KERNEL32.dll`
 /// - Imported symbols include exactly `GetStdHandle`, `WriteFile`, `ExitProcess`
 pub fn verify_hello_console_pe(bytes: &[u8]) -> Result<PeImageInfo, PeVerificationError> {
+    verify_fixture_pe(bytes, &["ExitProcess", "GetStdHandle", "WriteFile"])
+}
+
+/// Verifies that a binary satisfies all clean-room echo_cmdline_env acceptance criteria:
+/// - Architecture is AMD64 (x86_64)
+/// - Subsystem is Windows CUI (console)
+/// - Imported DLLs are strictly restricted to `KERNEL32.dll`
+/// - Imported symbols include exactly `ExitProcess`, `GetCommandLineW`, `GetEnvironmentVariableW`, `GetStdHandle`, `WriteFile`
+pub fn verify_echo_cmdline_env_pe(bytes: &[u8]) -> Result<PeImageInfo, PeVerificationError> {
+    let expected_symbols = [
+        "ExitProcess",
+        "GetCommandLineW",
+        "GetEnvironmentVariableW",
+        "GetStdHandle",
+        "WriteFile",
+    ];
+    verify_fixture_pe(bytes, &expected_symbols)
+}
+
+/// Generic helper to verify a clean-room console fixture PE binary against expected imports.
+pub fn verify_fixture_pe(
+    bytes: &[u8],
+    expected_symbols: &[&str],
+) -> Result<PeImageInfo, PeVerificationError> {
     let info = parse_pe(bytes)?;
 
     if info.subsystem != IMAGE_SUBSYSTEM_WINDOWS_CUI {
@@ -311,9 +335,8 @@ pub fn verify_hello_console_pe(bytes: &[u8]) -> Result<PeImageInfo, PeVerificati
     }
 
     let symbols = &info.imports[expected_dll];
-    let expected_symbols = ["ExitProcess", "GetStdHandle", "WriteFile"];
 
-    for &sym in &expected_symbols {
+    for &sym in expected_symbols {
         if !symbols.iter().any(|s| s == sym) {
             return Err(PeVerificationError::MissingImportedSymbol(sym.to_string()));
         }

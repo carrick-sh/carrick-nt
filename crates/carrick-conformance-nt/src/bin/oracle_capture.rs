@@ -60,6 +60,14 @@ struct Args {
     #[arg(long, default_value = "C:\\carrick-oracle")]
     remote_dir: String,
 
+    /// Arguments to pass to the target executable inside the container
+    #[arg(long)]
+    app_args: Option<String>,
+
+    /// Environment variables in KEY=VALUE format to set in the container
+    #[arg(long = "env")]
+    env_vars: Vec<String>,
+
     /// Print the commands and plan without connecting to the remote host
     #[arg(long)]
     dry_run: bool,
@@ -83,6 +91,8 @@ fn main() -> ExitCode {
     config.container_image = args.image;
     config.timeout_seconds = args.timeout;
     config.output_receipt_path = args.output;
+    config.app_args = args.app_args;
+    config.env_vars = args.env_vars;
 
     if args.dry_run {
         let plan = generate_execution_plan(&config);

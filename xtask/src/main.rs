@@ -3,7 +3,7 @@
 use carrick_conformance_nt::census::{
     build_census_report, generate_markdown_report, scan_binary_file, ProgramCensus,
 };
-use carrick_conformance_nt::pe::verify_hello_console_pe;
+use carrick_conformance_nt::pe::{verify_echo_cmdline_env_pe, verify_hello_console_pe};
 use carrick_conformance_nt::receipt::compute_sha256;
 use carrick_pe_loader::exports::{parse_export_directory, PeExportProvider};
 use carrick_pe_loader::headers::{
@@ -113,7 +113,7 @@ fn main() -> ExitCode {
         },
         Commands::All { target } => {
             println!("=== Step 1: Building clean-room fixtures ===");
-            let fixture_path = match build_fixtures(&target) {
+            let _fixture_path = match build_fixtures(&target) {
                 Ok(p) => p,
                 Err(e) => {
                     eprintln!("Error building fixtures: {e}");
@@ -121,9 +121,17 @@ fn main() -> ExitCode {
                 }
             };
 
-            println!("\n=== Step 2: Verifying PE fixture ===");
-            if let Err(e) = verify_pe_artifact(Some(&fixture_path)) {
-                eprintln!("PE verification failed: {e}");
+            println!("\n=== Step 2: Verifying PE fixtures ===");
+            if let Err(e) =
+                verify_pe_artifact(Some(Path::new("tests/oracle/fixtures/hello_console.exe")))
+            {
+                eprintln!("PE verification failed for hello_console: {e}");
+                return ExitCode::FAILURE;
+            }
+            if let Err(e) = verify_pe_artifact(Some(Path::new(
+                "tests/oracle/fixtures/echo_cmdline_env.exe",
+            ))) {
+                eprintln!("PE verification failed for echo_cmdline_env: {e}");
                 return ExitCode::FAILURE;
             }
 
@@ -165,10 +173,16 @@ fn main() -> ExitCode {
 }
 
 pub fn build_fixtures(target: &str) -> Result<PathBuf, String> {
-    println!("Building clean-room fixture 'hello_console' for target '{target}'...");
+    build_single_fixture("hello_console", target)?;
+    build_single_fixture("echo_cmdline_env", target)?;
+    Ok(PathBuf::from("tests/oracle/fixtures/hello_console.exe"))
+}
 
-    let manifest_path = "crates/carrick-conformance-nt/fixtures/hello_console/Cargo.toml";
-    if !Path::new(manifest_path).exists() {
+pub fn build_single_fixture(name: &str, target: &str) -> Result<PathBuf, String> {
+    println!("Building clean-room fixture '{name}' for target '{target}'...");
+
+    let manifest_path = format!("crates/carrick-conformance-nt/fixtures/{name}/Cargo.toml");
+    if !Path::new(&manifest_path).exists() {
         return Err(format!("Fixture manifest not found: {manifest_path}"));
     }
 
@@ -177,7 +191,7 @@ pub fn build_fixtures(target: &str) -> Result<PathBuf, String> {
     let status = Command::new("cargo")
         .arg("build")
         .arg("--manifest-path")
-        .arg(manifest_path)
+        .arg(&manifest_path)
         .arg("--target")
         .arg(target)
         .arg("--release")
@@ -186,23 +200,25 @@ pub fn build_fixtures(target: &str) -> Result<PathBuf, String> {
         .map_err(|e| format!("Failed to spawn cargo build: {e}"))?;
 
     if !status.success() {
-        return Err(format!("cargo build exited with status {status}"));
+        return Err(format!(
+            "cargo build for {name} exited with status {status}"
+        ));
     }
 
     let possible_paths = [
-        format!("crates/carrick-conformance-nt/fixtures/hello_console/target/{target}/release/hello_console.exe"),
-        format!("target/{target}/release/hello_console.exe"),
+        format!("crates/carrick-conformance-nt/fixtures/{name}/target/{target}/release/{name}.exe"),
+        format!("target/{target}/release/{name}.exe"),
     ];
 
     let found_binary = possible_paths
         .iter()
         .map(PathBuf::from)
         .find(|p| p.exists())
-        .ok_or_else(|| "Could not locate compiled hello_console.exe in target dirs".to_string())?;
+        .ok_or_else(|| format!("Could not locate compiled {name}.exe in target dirs"))?;
 
     let destinations = [
-        "tests/oracle/fixtures/hello_console.exe",
-        "crates/carrick-conformance-nt/fixtures/hello_console.exe",
+        format!("tests/oracle/fixtures/{name}.exe"),
+        format!("crates/carrick-conformance-nt/fixtures/{name}.exe"),
     ];
 
     for dest_str in &destinations {
@@ -215,10 +231,10 @@ pub fn build_fixtures(target: &str) -> Result<PathBuf, String> {
 
     let binary_bytes = fs::read(&found_binary).map_err(|e| e.to_string())?;
     let hash = compute_sha256(&binary_bytes);
-    println!("Compiled binary SHA-256: {hash}");
+    println!("Compiled {name}.exe SHA-256: {hash}");
     println!("Staged binary to: {}", destinations[0]);
 
-    Ok(PathBuf::from(destinations[0]))
+    Ok(PathBuf::from(destinations[0].clone()))
 }
 
 pub fn build_guest_dlls(target: &str) -> Result<(PathBuf, PathBuf), String> {
@@ -351,8 +367,12 @@ pub fn verify_pe_artifact(binary: Option<&Path>) -> Result<(), String> {
     let bytes =
         fs::read(&candidate).map_err(|e| format!("Failed to read {}: {e}", candidate.display()))?;
 
-    let info = verify_hello_console_pe(&bytes)
-        .map_err(|e| format!("Clean-room PE validation failed: {e}"))?;
+    let info = if candidate.to_string_lossy().contains("echo_cmdline_env") {
+        verify_echo_cmdline_env_pe(&bytes)
+    } else {
+        verify_hello_console_pe(&bytes)
+    }
+    .map_err(|e| format!("Clean-room PE validation failed: {e}"))?;
 
     println!("  Machine: AMD64 (0x{:04x}) - OK", info.machine);
     println!("  Subsystem: Windows CUI ({}) - OK", info.subsystem);
@@ -454,6 +474,11 @@ pub fn verify_guest_dlls(target: &str) -> Result<(), String> {
         "WriteConsoleW",
         "ExitProcess",
         "DllMain",
+        "GetCommandLineW",
+        "GetEnvironmentStringsW",
+        "FreeEnvironmentStringsW",
+        "GetEnvironmentVariableW",
+        "SetEnvironmentVariableW",
     ] {
         if kernel32_exports.find_by_name(req).is_none() {
             return Err(format!("kernel32.dll missing export {req}"));

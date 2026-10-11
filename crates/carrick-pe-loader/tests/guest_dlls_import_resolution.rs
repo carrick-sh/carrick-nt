@@ -32,6 +32,7 @@ struct GuestDlls {
     ntdll_path: PathBuf,
     kernel32_path: PathBuf,
     hello_console_path: PathBuf,
+    echo_cmdline_env_path: PathBuf,
 }
 
 fn get_or_build_artifacts() -> GuestDlls {
@@ -136,10 +137,36 @@ fn get_or_build_artifacts() -> GuestDlls {
         fs::copy(&built_hello, &hello_dest).unwrap();
     }
 
+    // 5. Build or locate echo_cmdline_env.exe
+    let echo_dest = ws.join("tests/oracle/fixtures/echo_cmdline_env.exe");
+    if !echo_dest.exists() {
+        let manifest =
+            ws.join("crates/carrick-conformance-nt/fixtures/echo_cmdline_env/Cargo.toml");
+        let rustflags = "-C panic=abort -C linker=lld -C link-args=/nodefaultlib -C link-args=/entry:mainCRTStartup -C link-args=/subsystem:console";
+        let status = Command::new("cargo")
+            .current_dir(&ws)
+            .arg("build")
+            .arg("--manifest-path")
+            .arg(&manifest)
+            .arg("--target")
+            .arg(target)
+            .arg("--release")
+            .env("RUSTFLAGS", rustflags)
+            .status()
+            .expect("Failed to build echo_cmdline_env.exe");
+        assert!(status.success(), "echo_cmdline_env cargo build failed");
+
+        let built_echo = ws.join(format!(
+            "crates/carrick-conformance-nt/fixtures/echo_cmdline_env/target/{target}/release/echo_cmdline_env.exe"
+        ));
+        fs::copy(&built_echo, &echo_dest).unwrap();
+    }
+
     GuestDlls {
         ntdll_path: ntdll_dest,
         kernel32_path: kernel32_dest,
         hello_console_path: hello_dest,
+        echo_cmdline_env_path: echo_dest,
     }
 }
 
@@ -212,6 +239,11 @@ fn test_guest_dlls_architecture_and_exports() {
         "WriteConsoleW",
         "ExitProcess",
         "DllMain",
+        "GetCommandLineW",
+        "GetEnvironmentStringsW",
+        "FreeEnvironmentStringsW",
+        "GetEnvironmentVariableW",
+        "SetEnvironmentVariableW",
     ];
     for name in &required_kernel32_exports {
         assert!(
@@ -311,6 +343,74 @@ fn test_resolve_hello_console_against_guest_dlls() {
     let mut guest_mem = vec![0u8; plan.total_virtual_size as usize];
     plan.apply_to_buffer(&hello_bytes, &mut guest_mem)
         .expect("apply_to_buffer failed for hello_console");
+
+    for binding in &plan.import_bindings {
+        let off = binding.iat_rva as usize;
+        let written_va = u64::from_le_bytes(guest_mem[off..off + 8].try_into().unwrap());
+        assert_eq!(written_va, binding.resolved_va.as_u64());
+    }
+}
+
+#[test]
+fn test_resolve_echo_cmdline_env_against_guest_dlls() {
+    let dlls = get_or_build_artifacts();
+
+    let ntdll_bytes = fs::read(&dlls.ntdll_path).unwrap();
+    let ntdll_headers = PeHeaders::parse(&ntdll_bytes).unwrap();
+    let ntdll_exports = parse_export_directory(&ntdll_headers, &ntdll_bytes)
+        .unwrap()
+        .unwrap();
+
+    let kernel32_bytes = fs::read(&dlls.kernel32_path).unwrap();
+    let kernel32_headers = PeHeaders::parse(&kernel32_bytes).unwrap();
+    let kernel32_exports = parse_export_directory(&kernel32_headers, &kernel32_bytes)
+        .unwrap()
+        .unwrap();
+
+    let mut provider = PeExportProvider::new();
+    let ntdll_base = VirtualAddress::new(0x0000_7FFF_1000_0000);
+    let kernel32_base = VirtualAddress::new(0x0000_7FFF_2000_0000);
+
+    provider.register_module("ntdll.dll", ntdll_base, ntdll_exports);
+    provider.register_module("kernel32.dll", kernel32_base, kernel32_exports.clone());
+
+    // Load echo_cmdline_env.exe and resolve its imports
+    let echo_bytes = fs::read(&dlls.echo_cmdline_env_path).unwrap();
+    let loader = PeLoader::new(provider);
+    let plan = loader
+        .load(&echo_bytes)
+        .expect("failed to load and resolve echo_cmdline_env.exe");
+
+    // All imports must resolve against kernel32.dll
+    assert!(
+        !plan.import_bindings.is_empty(),
+        "echo_cmdline_env must have resolved imports"
+    );
+    for binding in &plan.import_bindings {
+        assert_eq!(binding.dll_name.to_ascii_lowercase(), "kernel32.dll");
+        match &binding.symbol {
+            ImportSymbol::Named(name) => {
+                let entry = kernel32_exports
+                    .find_by_name(name)
+                    .unwrap_or_else(|| panic!("Symbol {name} not found in kernel32 exports"));
+                match entry.target {
+                    ExportTarget::Rva(rva) => {
+                        let expected_va = kernel32_base.checked_add(rva as u64).unwrap();
+                        assert_eq!(binding.resolved_va, expected_va);
+                    }
+                    ExportTarget::Forwarder(_) => {
+                        panic!("Expected RVA target for {name}");
+                    }
+                }
+            }
+            ImportSymbol::Ordinal(ord) => panic!("Unexpected ordinal import: #{ord}"),
+        }
+    }
+
+    // Apply mapping plan to buffer and verify IAT
+    let mut guest_mem = vec![0u8; plan.total_virtual_size as usize];
+    plan.apply_to_buffer(&echo_bytes, &mut guest_mem)
+        .expect("apply_to_buffer failed for echo_cmdline_env");
 
     for binding in &plan.import_bindings {
         let off = binding.iat_rva as usize;

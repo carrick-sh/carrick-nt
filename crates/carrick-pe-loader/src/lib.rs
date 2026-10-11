@@ -48,8 +48,9 @@ pub use plan::{
     VirtualAddress, VirtualRange,
 };
 pub use process_memory::{
-    ProcessMemoryConfig, ProcessMemoryImage, STD_ERROR_HANDLE_VAL, STD_INPUT_HANDLE_VAL,
-    STD_OUTPUT_HANDLE_VAL, TEB_OFFSET_CLIENT_ID, TEB_OFFSET_PEB, TEB_OFFSET_SELF,
+    encode_command_line, encode_environment_block, ProcessMemoryConfig, ProcessMemoryImage,
+    STD_ERROR_HANDLE_VAL, STD_INPUT_HANDLE_VAL, STD_OUTPUT_HANDLE_VAL, TEB_OFFSET_CLIENT_ID,
+    TEB_OFFSET_PEB, TEB_OFFSET_SELF,
 };
 pub use relocations::{BaseRelocationBlock, RelocationType};
 pub use tls::TlsDirectoryInfo;

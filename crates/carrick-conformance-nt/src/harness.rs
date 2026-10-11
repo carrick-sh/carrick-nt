@@ -73,6 +73,8 @@ pub struct CaptureConfig {
     pub container_image: String,
     pub timeout_seconds: u64,
     pub output_receipt_path: Option<PathBuf>,
+    pub app_args: Option<String>,
+    pub env_vars: Vec<String>,
 }
 
 impl CaptureConfig {
@@ -92,6 +94,8 @@ impl CaptureConfig {
             container_image: DEFAULT_PINNED_NANOSERVER_IMAGE.to_string(),
             timeout_seconds: 30,
             output_receipt_path: None,
+            app_args: None,
+            env_vars: Vec::new(),
         }
     }
 }
@@ -104,6 +108,25 @@ pub struct ExecutionPlan {
     pub remote_script_invocation: String,
     pub pinned_image: String,
     pub image_rationale: &'static str,
+}
+
+fn format_ps_invocation(config: &CaptureConfig, remote_ps1: &str, remote_bin: &str) -> String {
+    let app_args_flag = if let Some(args) = &config.app_args {
+        format!(" -AppArgs \"{args}\"")
+    } else {
+        String::new()
+    };
+    let env_vars_flag = if !config.env_vars.is_empty() {
+        let items = config.env_vars.join(",");
+        format!(" -EnvVars \"{items}\"")
+    } else {
+        String::new()
+    };
+
+    format!(
+        "powershell -NoProfile -ExecutionPolicy Bypass -File \"{remote_ps1}\" -ExePath \"{remote_bin}\" -ImageTag \"{}\" -TimeoutSeconds {}{app_args_flag}{env_vars_flag}",
+        config.container_image, config.timeout_seconds
+    )
 }
 
 /// Generates the dry-run execution plan detailing exact commands without reaching the network.
@@ -135,10 +158,7 @@ pub fn generate_execution_plan(config: &CaptureConfig) -> ExecutionPlan {
         config.ssh_host
     );
 
-    let ps_invocation = format!(
-        "powershell -NoProfile -ExecutionPolicy Bypass -File \"{remote_ps1}\" -ExePath \"{remote_bin}\" -ImageTag \"{}\" -TimeoutSeconds {}",
-        config.container_image, config.timeout_seconds
-    );
+    let ps_invocation = format_ps_invocation(config, &remote_ps1, &remote_bin);
 
     let ssh_cmd = format!(
         "ssh {port_flag} {key_flag} {} \"{ps_invocation}\"",
@@ -230,10 +250,7 @@ pub fn execute_capture(config: &CaptureConfig) -> Result<OracleReceipt, HarnessE
     if let Some(key) = &config.ssh_key {
         ssh_run.args(["-i", key.to_str().unwrap()]);
     }
-    let ps_cmd = format!(
-        "powershell -NoProfile -ExecutionPolicy Bypass -File \"{remote_ps1}\" -ExePath \"{remote_bin}\" -ImageTag \"{}\" -TimeoutSeconds {}",
-        config.container_image, config.timeout_seconds
-    );
+    let ps_cmd = format_ps_invocation(config, &remote_ps1, &remote_bin);
     ssh_run.arg(&config.ssh_host).arg(ps_cmd);
 
     let output = ssh_run.output()?;

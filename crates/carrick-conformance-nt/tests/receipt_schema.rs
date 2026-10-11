@@ -3,6 +3,7 @@
 use carrick_conformance_nt::receipt::{
     compute_sha256, OracleHostInfo, OracleReceipt, ORACLE_RECEIPT_SCHEMA_V1,
 };
+use std::path::PathBuf;
 
 const DOC_5_2_EXAMPLE_JSON: &str = r#"{
   "$schema": "https://carrick.dev/schemas/oracle-receipt-v1.json",
@@ -104,4 +105,28 @@ fn test_sha256_computation() {
         compute_sha256(b"Hello, Carrick NT!\r\n"),
         "d19e0189a6d33db4fe308d5c1b988ef90b9216e7ddbeb9bde374e650c1e4e939"
     );
+}
+
+#[test]
+fn test_committed_oracle_receipts() {
+    let ws = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let receipts_dir = ws.join("tests/oracle/receipts");
+
+    for file_name in &["hello_console.json", "echo_cmdline_env.json"] {
+        let path = receipts_dir.join(file_name);
+        assert!(path.exists(), "Receipt file must exist: {}", path.display());
+        let data = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("Failed to read {}: {e}", path.display()));
+        let receipt = OracleReceipt::from_json_str(&data)
+            .unwrap_or_else(|e| panic!("Failed to parse {}: {e}", path.display()));
+        assert_eq!(receipt.schema, ORACLE_RECEIPT_SCHEMA_V1);
+        assert_eq!(receipt.execution.exit_code, 0);
+        assert!(receipt.decode_stdout().is_ok());
+        assert!(receipt.decode_stderr().is_ok());
+    }
 }
