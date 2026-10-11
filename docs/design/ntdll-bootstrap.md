@@ -122,9 +122,9 @@ The chosen architecture establishes a two-tier guest execution boundary:
 |   | carrick-personality-nt (NT Personality Client)              |
 |   |   - Decodes Carrick NtServiceId                             |
 |   |   - Validates NT object handles & IO_STATUS_BLOCK           |
-|   |   - Dispatches I/O to Carrick CoreServices                  |
+|   |   - Dispatches I/O via CallContext service handles       |
 |   +-------------------------------------------------------------+ |
-|               | calls CoreServices::transfer / commit / enroll    |
+|               | calls cx.user() / cx.mm() / cx.task() (target)   |
 |               v                                                   |
 |   +-------------------------------------------------------------+ |
 |   | carrick-core (Neutral Kernel Substrate: MMU, Sched, Wait)   |
@@ -135,9 +135,9 @@ The chosen architecture establishes a two-tier guest execution boundary:
 #### The Carrick NT Hypercall / System Call Contract
 In our guest userland:
 - `carrick-ntdll` defines stable, sequential service ordinals (`NtServiceId` in `carrick-nt-abi`).
-- On x86_64, system call dispatch follows the Microsoft x64 calling convention:
+- On x86_64, system call dispatch follows the Microsoft x64 calling convention, adjusted for the `syscall` instruction:
   - `eax`: holds the `NtServiceId` (e.g., `0x0001` for `NtTerminateProcess`, `0x0002` for `NtWriteFile`).
-  - `rcx`: 1st argument.
+  - `r10`: 1st argument. The `syscall` instruction overwrites `rcx` (return RIP) and `r11` (RFLAGS), so the user-mode stub copies the first argument from `rcx` into `r10` before `syscall`; neither `rcx` nor `r11` can carry an argument into the kernel.
   - `rdx`: 2nd argument.
   - `r8`: 3rd argument.
   - `r9`: 4th argument.
@@ -253,7 +253,7 @@ Virtual Memory Address Space
 ```
 
 1. **Virtual Address Space Reservation:**
-   - Query Carrick `CoreServices::reserve` for an address range of size `OptionalHeader.SizeOfImage` aligned to 64 KiB (the Windows allocation granularity).
+   - Reserve, through the personality MM service over carrick-core's reservation root (carrick#203), an address range of size `OptionalHeader.SizeOfImage` aligned to 64 KiB (the Windows allocation granularity).
    - If the preferred `OptionalHeader.ImageBase` is free and ASLR (`IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE`) is disabled, reserve at `ImageBase`. Otherwise, allocate an arbitrary available 64 KiB aligned base (`ActualBase`).
 2. **Header Mapping:**
    - Commit `OptionalHeader.SizeOfHeaders` bytes at `ActualBase` with `PageAccess::ReadOnly`.
@@ -266,7 +266,7 @@ Virtual Memory Address Space
        - `IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ` -> `PageAccess::ReadExecute`
        - `IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE` -> `PageAccess::ReadWrite`
        - `IMAGE_SCN_MEM_READ` -> `PageAccess::ReadOnly`
-     - Commit pages via `CoreServices::commit_pages` for `Span` at `SecVA`.
+     - Commit pages through the same MM service for `Span` at `SecVA`.
      - Copy `SectionHeader.SizeOfRawData` bytes from `SectionHeader.PointerToRawData` to `SecVA`.
      - Zero the remainder of `Span` from `SizeOfRawData` to `VirtualSize` (uninitialized `.bss` data).
 
@@ -453,7 +453,7 @@ Per [Microsoft Learn: GetStdHandle function](https://learn.microsoft.com/en-us/w
 - The returned handle points to a valid Carrick stream handle mapped to standard output.
 - When `WriteFile` ([Microsoft Learn: WriteFile](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefile)) or `WriteConsole` ([Microsoft Learn: WriteConsole](https://learn.microsoft.com/en-us/windows/console/writeconsole)) is called with this handle:
   - `WriteFile` forwards to documented native API `NtWriteFile(Handle, NULL, NULL, NULL, &IoStatusBlock, Buffer, Length, NULL, NULL)` ([Microsoft Learn: NtWriteFile](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntwritefile)).
-  - In Carrick NT, `NtWriteFile` inspects the handle table, transfers the buffer to host stdout via `CoreServices::transfer`, and sets `IoStatusBlock.Information` to the transferred byte count with status `STATUS_SUCCESS` (`0x00000000`).
+  - In Carrick NT, `NtWriteFile` inspects the handle table, copies the buffer in with `cx.user()` and writes it through a typed host-object STDOUT crossing, and sets `IoStatusBlock.Information` to the transferred byte count with status `STATUS_SUCCESS` (`0x00000000`).
 
 ---
 
@@ -523,11 +523,12 @@ The NT personality consumes the following neutral seams defined in Carrick's per
        fn encode_return(&self, value: NtReturn, frame: &mut X86_64Frame) -> Result<(), UserReturnError>;
    }
    ```
-2. **`CoreServices<A: EntryArch>` Trait:**
-   - `reserve(&mut self, mm, request)`: Reserves user virtual address space for PE images without backing frames.
-   - `commit_pages(&mut self, reservation, range, backing, access)`: Commits memory pages with specific protection (`ReadExecute`, `ReadOnly`, `ReadWrite`).
-   - `transfer(&mut self, permit, range)`: Safely writes PE headers, section bytes, and PEB/TEB data into guest memory.
-   - `prepare_task` and `publish_task`: Manages task/thread birth and execution scheduling.
+2. **Personality-facing services (through `CallContext`), status as of 2026-10-11:**
+   - The `Personality` trait above is the TARGET shape from the split spec. The live seam is being reshaped upstream: snapshot-based decode with an associated `Call` type (carrick#205), and user copy-in/copy-out as `cx.user()` on `CallContext` (carrick#209/#210).
+   - There is no `CoreServices` trait. Services are capability-scoped handles borrowed from the per-entry `CallContext` (`cx.user()`, and later `cx.host()`, `cx.mm()`, `cx.objects()`, `cx.task()`), all backed by carrick's single in-ring implementation.
+   - Address-space reservation, commit and decommit exist on carrick-core's shared reservation root (carrick#203). A personality-facing `cx.mm()` handle over it is still to be added. NT needs commit tracked separately from protection, so that PAGE_NOACCESS-committed and guard pages can be represented.
+   - The out-of-tree composition root (a carrier library generic over the personality) is in progress upstream. Until it lands, NT exercises its personality against simulated `CallContext`s.
+   - Owner decisions: no Forward to the host dispatcher; typed personality process/thread state owned by core task lifetime; full-width exit status; in-ring file I/O behind a neutral seam (no host file-object request family).
 
 ### 4.3 Proposed Personality-Neutral Upstream Carrick Issues
 
@@ -816,8 +817,8 @@ We specify two clean-room compilation paths:
 - **Lane:** `nt`
 - **Body:**
   - **Why:** The PE loader must map executable sections into guest address space with permissions matching PE section characteristics (`PAGE_EXECUTE_READ`, `PAGE_READONLY`, `PAGE_READWRITE`).
-  - **What:** In `carrick-pe-loader`, implement `map_image_sections`. Consume `CoreServices::reserve` to reserve `SizeOfImage` and `CoreServices::commit_pages` to map headers and section data. Zero-fill uninitialized section space up to `VirtualSize`.
-  - **Verified:** Test mapping against mock `CoreServices` memory tracking; verify pages have correct access flags and uninitialized data is zeroed.
+  - **What:** In `carrick-pe-loader`, implement `map_image_sections`. Use the personality MM service (over carrick-core reservations, carrick#203) to reserve `SizeOfImage` and commit headers and section data. Zero-fill uninitialized section space up to `VirtualSize`.
+  - **Verified:** Test mapping against a simulated MM service; verify pages have correct access flags and uninitialized data is zeroed.
 - **Acceptance Criteria:**
   - Correct page access flags applied per section (`.text` RX, `.rdata` R, `.data` RW).
   - Headers mapped read-only at base.
