@@ -5,7 +5,7 @@
 //! - Microsoft Learn: WDK Native APIs (NtWriteFile, NtTerminateProcess, NtClose)
 //! - Clean-Room Rules: No Wine/ReactOS, no leaked Microsoft code.
 
-use carrick_core::personality::DecodedCall;
+use carrick_core::personality::CallOrdinal;
 use carrick_nt_abi::{
     GuestPtr, GuestVa, IoStatusBlock, NtHandle, NtServiceId, NtStatus, UserLength,
 };
@@ -54,48 +54,16 @@ pub enum NtCall {
     Close { handle: NtHandle },
 }
 
-impl TryFrom<&DecodedCall> for NtCall {
-    type Error = NtStatus;
-
-    fn try_from(call: &DecodedCall) -> Result<Self, Self::Error> {
-        let service = match NtServiceId::from_u32(call.ordinal as u32) {
-            Some(s) => s,
-            None => return Err(NtStatus::STATUS_NOT_IMPLEMENTED),
-        };
-
-        match service {
-            NtServiceId::NtTerminateProcess => {
-                if call.arity.get() < 2 {
-                    return Err(NtStatus::STATUS_INVALID_PARAMETER);
-                }
-                Ok(Self::TerminateProcess {
-                    process_handle: NtHandle::from_raw(call.args[0]),
-                    exit_status: NtStatus::from_raw(call.args[1] as u32),
-                })
+impl NtCall {
+    /// Returns the typed `CallOrdinal` associated with this system call.
+    pub fn ordinal(&self) -> CallOrdinal {
+        match self {
+            Self::TerminateProcess { .. } => {
+                CallOrdinal::from_raw(NtServiceId::NtTerminateProcess.as_u32() as u64)
             }
-            NtServiceId::NtClose => {
-                if call.arity.get() < 1 {
-                    return Err(NtStatus::STATUS_INVALID_PARAMETER);
-                }
-                Ok(Self::Close {
-                    handle: NtHandle::from_raw(call.args[0]),
-                })
-            }
-            NtServiceId::NtWriteFile => {
-                if call.arity.get() < 9 {
-                    return Err(NtStatus::STATUS_INVALID_PARAMETER);
-                }
-                Ok(Self::WriteFile {
-                    file_handle: NtHandle::from_raw(call.args[0]),
-                    event: NtHandle::from_raw(call.args[1]),
-                    apc_routine: GuestVa::new(call.args[2]),
-                    apc_context: GuestVa::new(call.args[3]),
-                    io_status_block: GuestPtr::from_raw(call.args[4]),
-                    buffer: GuestVa::new(call.args[5]),
-                    length: UserLength::new(call.args[6] as u32),
-                    byte_offset: GuestVa::new(call.args[7]),
-                    key: GuestVa::new(call.args[8]),
-                })
+            Self::Close { .. } => CallOrdinal::from_raw(NtServiceId::NtClose.as_u32() as u64),
+            Self::WriteFile { .. } => {
+                CallOrdinal::from_raw(NtServiceId::NtWriteFile.as_u32() as u64)
             }
         }
     }

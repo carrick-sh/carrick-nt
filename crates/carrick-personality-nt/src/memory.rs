@@ -13,10 +13,20 @@ use carrick_nt_abi::{GuestVa, NtStatus};
 /// Trait abstracting reading and writing guest virtual memory.
 pub trait UserMemory {
     /// Reads a slice of bytes from guest virtual address `va`.
-    fn read_bytes(&self, va: GuestVa, buf: &mut [u8]) -> Result<(), NtStatus>;
+    fn read_bytes(&mut self, va: GuestVa, buf: &mut [u8]) -> Result<(), NtStatus>;
 
     /// Writes a slice of bytes to guest virtual address `va`.
     fn write_bytes(&mut self, va: GuestVa, buf: &[u8]) -> Result<(), NtStatus>;
+}
+
+impl<M: UserMemory + ?Sized> UserMemory for &mut M {
+    fn read_bytes(&mut self, va: GuestVa, buf: &mut [u8]) -> Result<(), NtStatus> {
+        (**self).read_bytes(va, buf)
+    }
+
+    fn write_bytes(&mut self, va: GuestVa, buf: &[u8]) -> Result<(), NtStatus> {
+        (**self).write_bytes(va, buf)
+    }
 }
 
 /// In-memory simulated guest address space for VM-free unit and scenario tests.
@@ -70,7 +80,7 @@ impl SimulatedUserMemory {
 
     /// Reads an `IoStatusBlock` from guest virtual memory.
     pub fn read_io_status_block(
-        &self,
+        &mut self,
         ptr: GuestPtr<IoStatusBlock>,
     ) -> Result<IoStatusBlock, NtStatus> {
         let mut bytes = [0u8; 16];
@@ -113,7 +123,7 @@ impl SimulatedUserMemory {
 
 #[cfg(any(test, feature = "test-support"))]
 impl UserMemory for SimulatedUserMemory {
-    fn read_bytes(&self, va: GuestVa, buf: &mut [u8]) -> Result<(), NtStatus> {
+    fn read_bytes(&mut self, va: GuestVa, buf: &mut [u8]) -> Result<(), NtStatus> {
         if buf.is_empty() {
             return Ok(());
         }

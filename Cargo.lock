@@ -144,7 +144,7 @@ dependencies = [
 [[package]]
 name = "carrick-core"
 version = "0.1.0"
-source = "git+https://github.com/carrick-sh/carrick.git?rev=c233008431eaaa966cbcdb6bf951ee126e6923e9#c233008431eaaa966cbcdb6bf951ee126e6923e9"
+source = "git+https://github.com/carrick-sh/carrick.git?rev=b211c56a6993c8d5a6155589aa4324ee2d04dada#b211c56a6993c8d5a6155589aa4324ee2d04dada"
 dependencies = [
  "carrick-core-abi",
  "carrick-guest-arch",
@@ -156,7 +156,7 @@ dependencies = [
 [[package]]
 name = "carrick-core-abi"
 version = "0.1.0"
-source = "git+https://github.com/carrick-sh/carrick.git?rev=c233008431eaaa966cbcdb6bf951ee126e6923e9#c233008431eaaa966cbcdb6bf951ee126e6923e9"
+source = "git+https://github.com/carrick-sh/carrick.git?rev=b211c56a6993c8d5a6155589aa4324ee2d04dada#b211c56a6993c8d5a6155589aa4324ee2d04dada"
 dependencies = [
  "carrick-guest-arch",
  "carrick-mmu-core",
@@ -167,7 +167,7 @@ dependencies = [
 [[package]]
 name = "carrick-guest-arch"
 version = "0.1.0"
-source = "git+https://github.com/carrick-sh/carrick.git?rev=c233008431eaaa966cbcdb6bf951ee126e6923e9#c233008431eaaa966cbcdb6bf951ee126e6923e9"
+source = "git+https://github.com/carrick-sh/carrick.git?rev=b211c56a6993c8d5a6155589aa4324ee2d04dada#b211c56a6993c8d5a6155589aa4324ee2d04dada"
 dependencies = [
  "carrick-signal-core",
  "carrick-syscall-abi",
@@ -177,7 +177,7 @@ dependencies = [
 [[package]]
 name = "carrick-mmu-core"
 version = "0.1.0"
-source = "git+https://github.com/carrick-sh/carrick.git?rev=c233008431eaaa966cbcdb6bf951ee126e6923e9#c233008431eaaa966cbcdb6bf951ee126e6923e9"
+source = "git+https://github.com/carrick-sh/carrick.git?rev=b211c56a6993c8d5a6155589aa4324ee2d04dada#b211c56a6993c8d5a6155589aa4324ee2d04dada"
 dependencies = [
  "carrick-guest-arch",
  "hashbrown 0.15.5",
@@ -209,7 +209,7 @@ dependencies = [
 [[package]]
 name = "carrick-sched-core"
 version = "0.1.0"
-source = "git+https://github.com/carrick-sh/carrick.git?rev=c233008431eaaa966cbcdb6bf951ee126e6923e9#c233008431eaaa966cbcdb6bf951ee126e6923e9"
+source = "git+https://github.com/carrick-sh/carrick.git?rev=b211c56a6993c8d5a6155589aa4324ee2d04dada#b211c56a6993c8d5a6155589aa4324ee2d04dada"
 dependencies = [
  "carrick-guest-arch",
  "carrick-signal-core",
@@ -220,12 +220,12 @@ dependencies = [
 [[package]]
 name = "carrick-signal-core"
 version = "0.1.0"
-source = "git+https://github.com/carrick-sh/carrick.git?rev=c233008431eaaa966cbcdb6bf951ee126e6923e9#c233008431eaaa966cbcdb6bf951ee126e6923e9"
+source = "git+https://github.com/carrick-sh/carrick.git?rev=b211c56a6993c8d5a6155589aa4324ee2d04dada#b211c56a6993c8d5a6155589aa4324ee2d04dada"
 
 [[package]]
 name = "carrick-syscall-abi"
 version = "0.1.0"
-source = "git+https://github.com/carrick-sh/carrick.git?rev=c233008431eaaa966cbcdb6bf951ee126e6923e9#c233008431eaaa966cbcdb6bf951ee126e6923e9"
+source = "git+https://github.com/carrick-sh/carrick.git?rev=b211c56a6993c8d5a6155589aa4324ee2d04dada#b211c56a6993c8d5a6155589aa4324ee2d04dada"
 dependencies = [
  "bitflags",
  "serde",
