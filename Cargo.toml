@@ -3,6 +3,7 @@ members = [
     "crates/carrick-conformance-nt",
     "crates/carrick-nt-abi",
     "crates/carrick-pe-loader",
+    "crates/carrick-personality-nt",
     "xtask",
 ]
 exclude = [

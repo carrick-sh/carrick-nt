@@ -28,6 +28,9 @@ impl NtStatus {
     /// STATUS_NOT_IMPLEMENTED (0xC0000002): The requested operation is not implemented.
     pub const STATUS_NOT_IMPLEMENTED: Self = Self(0xC000_0002);
 
+    /// STATUS_ACCESS_VIOLATION (0xC0000005): The instruction at 0x%p referenced memory at 0x%p. The memory could not be %s.
+    pub const STATUS_ACCESS_VIOLATION: Self = Self(0xC000_0005);
+
     /// STATUS_INVALID_HANDLE (0xC0000008): An invalid handle was specified.
     pub const STATUS_INVALID_HANDLE: Self = Self(0xC000_0008);
 
@@ -42,6 +45,9 @@ impl NtStatus {
 
     /// STATUS_BUFFER_TOO_SMALL (0xC0000023): The specified buffer is too small.
     pub const STATUS_BUFFER_TOO_SMALL: Self = Self(0xC000_0023);
+
+    /// STATUS_OBJECT_TYPE_MISMATCH (0xC0000024): There is a mismatch between the type of object required by the requested operation and the type of object that is specified in the request.
+    pub const STATUS_OBJECT_TYPE_MISMATCH: Self = Self(0xC000_0024);
 
     /// STATUS_OBJECT_NAME_NOT_FOUND (0xC0000034): The object name does not exist.
     pub const STATUS_OBJECT_NAME_NOT_FOUND: Self = Self(0xC000_0034);
@@ -97,6 +103,9 @@ impl fmt::Debug for NtStatus {
             Self::STATUS_SUCCESS => write!(f, "STATUS_SUCCESS (0x{:08X})", self.0),
             Self::STATUS_UNSUCCESSFUL => write!(f, "STATUS_UNSUCCESSFUL (0x{:08X})", self.0),
             Self::STATUS_NOT_IMPLEMENTED => write!(f, "STATUS_NOT_IMPLEMENTED (0x{:08X})", self.0),
+            Self::STATUS_ACCESS_VIOLATION => {
+                write!(f, "STATUS_ACCESS_VIOLATION (0x{:08X})", self.0)
+            }
             Self::STATUS_INVALID_HANDLE => write!(f, "STATUS_INVALID_HANDLE (0x{:08X})", self.0),
             Self::STATUS_INVALID_PARAMETER => {
                 write!(f, "STATUS_INVALID_PARAMETER (0x{:08X})", self.0)
@@ -105,6 +114,9 @@ impl fmt::Debug for NtStatus {
             Self::STATUS_ACCESS_DENIED => write!(f, "STATUS_ACCESS_DENIED (0x{:08X})", self.0),
             Self::STATUS_BUFFER_TOO_SMALL => {
                 write!(f, "STATUS_BUFFER_TOO_SMALL (0x{:08X})", self.0)
+            }
+            Self::STATUS_OBJECT_TYPE_MISMATCH => {
+                write!(f, "STATUS_OBJECT_TYPE_MISMATCH (0x{:08X})", self.0)
             }
             Self::STATUS_OBJECT_NAME_NOT_FOUND => {
                 write!(f, "STATUS_OBJECT_NAME_NOT_FOUND (0x{:08X})", self.0)
