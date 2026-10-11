@@ -206,7 +206,11 @@ impl<M: UserMemory, S: OutputSink> NtDispatcher<M, S> {
             HandleObject::ConsoleOutput | HandleObject::ConsoleError => {
                 let len = length.as_usize();
                 if len == 0 {
-                    let _ = self.write_io_status(io_status_block, NtStatus::STATUS_SUCCESS, 0);
+                    if let Err(err) =
+                        self.write_io_status(io_status_block, NtStatus::STATUS_SUCCESS, 0)
+                    {
+                        return ControlFlow::Return(err);
+                    }
                     return ControlFlow::Return(NtStatus::STATUS_SUCCESS);
                 }
 
@@ -230,8 +234,11 @@ impl<M: UserMemory, S: OutputSink> NtDispatcher<M, S> {
                     }
                 };
 
-                let _ =
-                    self.write_io_status(io_status_block, NtStatus::STATUS_SUCCESS, written as u64);
+                if let Err(err) =
+                    self.write_io_status(io_status_block, NtStatus::STATUS_SUCCESS, written as u64)
+                {
+                    return ControlFlow::Return(err);
+                }
                 ControlFlow::Return(NtStatus::STATUS_SUCCESS)
             }
             _ => {
@@ -265,4 +272,12 @@ impl<M: UserMemory, S: OutputSink> NtDispatcher<M, S> {
 /// Encodes an `NtStatus` return value into the x86_64 return register (`rax`).
 pub fn encode_return(status: NtStatus, rax: &mut u64) {
     *rax = status.as_u32() as u64;
+}
+
+/// Encodes an `NtStatus` return value into an `NtFrame`.
+pub fn encode_nt_status_return<F: crate::NtFrame>(
+    status: NtStatus,
+    frame: &mut F,
+) -> Result<(), carrick_core::personality::EntryDecodeError> {
+    frame.set_return_result(carrick_guest_arch::NativeReturnWord(status.as_u32() as u64))
 }
