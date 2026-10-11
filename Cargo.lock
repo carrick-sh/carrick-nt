@@ -142,6 +142,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "carrick-core"
+version = "0.1.0"
+source = "git+https://github.com/carrick-sh/carrick.git?rev=c233008431eaaa966cbcdb6bf951ee126e6923e9#c233008431eaaa966cbcdb6bf951ee126e6923e9"
+dependencies = [
+ "carrick-core-abi",
+ "carrick-guest-arch",
+ "carrick-mmu-core",
+ "carrick-sched-core",
+ "zerocopy",
+]
+
+[[package]]
+name = "carrick-core-abi"
+version = "0.1.0"
+source = "git+https://github.com/carrick-sh/carrick.git?rev=c233008431eaaa966cbcdb6bf951ee126e6923e9#c233008431eaaa966cbcdb6bf951ee126e6923e9"
+dependencies = [
+ "carrick-guest-arch",
+ "carrick-mmu-core",
+ "carrick-sched-core",
+ "zerocopy",
+]
+
+[[package]]
+name = "carrick-guest-arch"
+version = "0.1.0"
+source = "git+https://github.com/carrick-sh/carrick.git?rev=c233008431eaaa966cbcdb6bf951ee126e6923e9#c233008431eaaa966cbcdb6bf951ee126e6923e9"
+dependencies = [
+ "carrick-signal-core",
+ "carrick-syscall-abi",
+ "zerocopy",
+]
+
+[[package]]
+name = "carrick-mmu-core"
+version = "0.1.0"
+source = "git+https://github.com/carrick-sh/carrick.git?rev=c233008431eaaa966cbcdb6bf951ee126e6923e9#c233008431eaaa966cbcdb6bf951ee126e6923e9"
+dependencies = [
+ "carrick-guest-arch",
+ "hashbrown 0.15.5",
+]
+
+[[package]]
 name = "carrick-nt-abi"
 version = "0.1.0"
 
@@ -151,6 +193,42 @@ version = "0.1.0"
 dependencies = [
  "carrick-nt-abi",
  "proptest",
+]
+
+[[package]]
+name = "carrick-personality-nt"
+version = "0.1.0"
+dependencies = [
+ "carrick-core",
+ "carrick-guest-arch",
+ "carrick-nt-abi",
+ "serde_json",
+]
+
+[[package]]
+name = "carrick-sched-core"
+version = "0.1.0"
+source = "git+https://github.com/carrick-sh/carrick.git?rev=c233008431eaaa966cbcdb6bf951ee126e6923e9#c233008431eaaa966cbcdb6bf951ee126e6923e9"
+dependencies = [
+ "carrick-guest-arch",
+ "carrick-signal-core",
+ "carrick-syscall-abi",
+ "zerocopy",
+]
+
+[[package]]
+name = "carrick-signal-core"
+version = "0.1.0"
+source = "git+https://github.com/carrick-sh/carrick.git?rev=c233008431eaaa966cbcdb6bf951ee126e6923e9#c233008431eaaa966cbcdb6bf951ee126e6923e9"
+
+[[package]]
+name = "carrick-syscall-abi"
+version = "0.1.0"
+source = "git+https://github.com/carrick-sh/carrick.git?rev=c233008431eaaa966cbcdb6bf951ee126e6923e9#c233008431eaaa966cbcdb6bf951ee126e6923e9"
+dependencies = [
+ "bitflags",
+ "serde",
+ "zerocopy",
 ]
 
 [[package]]
@@ -295,6 +373,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
+name = "foldhash"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -318,6 +402,15 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
+version = "0.15.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
+dependencies = [
+ "foldhash",
+]
+
+[[package]]
+name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
@@ -335,7 +428,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
 dependencies = [
  "equivalent",
- "hashbrown",
+ "hashbrown 0.17.1",
 ]
 
 [[package]]
@@ -720,6 +813,26 @@ dependencies = [
  "carrick-pe-loader",
  "clap",
  "serde_json",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.8.62"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86502bf56ac7c77571a32e2647bb2a15894565e981fb2a48d7bde2d91c965a9d"
+dependencies = [
+ "zerocopy-derive",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.8.62"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5457206954b06561e2608c7e19cf58b1926586d999c246eebe4502f7e2039d1a"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

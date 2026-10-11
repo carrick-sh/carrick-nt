@@ -1,25 +1,26 @@
 {
-    "$schema":  "https://carrick.dev/schemas/oracle-receipt-v1.json",
-    "metadata":  {
-                     "test_name":  "hello_console",
-                     "lane":  "nt",
-                     "target_arch":  "x86_64",
-                     "oracle_host":  {
-                                         "os":  "Microsoft Windows Server 2025 Standard Evaluation",
-                                         "build":  "26100.33438",
-                                         "container_image":  "mcr.microsoft.com/windows/nanoserver:ltsc2025@sha256:15760261db306980fd96acf7e2c73779eaaeefdff289339b9526295c88957e56"
-                                     },
-                     "binary_hash_sha256":  "57d565c90db8fcec440e54161f65fe91a622c5da537238d9d75da41a980081bb",
-                     "captured_at_utc":  "2026-10-10T22:29:08Z"
-                 },
-    "execution":  {
-                      "command":  [
-                                      "hello_console.exe"
-                                  ],
-                      "exit_code":  0,
-                      "stdout_raw":  "Hello, Carrick NT!\r\n",
-                      "stdout_base64":  "SGVsbG8sIENhcnJpY2sgTlQhDQo=",
-                      "stderr_raw":  "",
-                      "stderr_base64":  ""
-                  }
+  "$schema": "https://carrick.dev/schemas/oracle-receipt-v1.json",
+  "metadata": {
+    "test_name": "hello_console",
+    "lane": "nt",
+    "target_arch": "x86_64",
+    "oracle_host": {
+      "os": "Microsoft Windows Server 2025 Standard Evaluation",
+      "build": "26100.33438",
+      "container_image": "mcr.microsoft.com/windows/nanoserver:ltsc2025@sha256:15760261db306980fd96acf7e2c73779eaaeefdff289339b9526295c88957e56"
+    },
+    "source_hash_sha256": "5ee4774cca24f1efc5b6c84f8c71dd0412f8552e2885c39125dc77a6fcae3ec1",
+    "binary_hash_sha256": "b2204c3d7fc97b3e6f2f387a3a636c46225143437491d542e4fc26e9a53b0e31",
+    "captured_at_utc": "2026-10-11T15:49:46Z"
+  },
+  "execution": {
+    "command": [
+      "hello_console.exe"
+    ],
+    "exit_code": 0,
+    "stdout_raw": "Hello, Carrick NT!\r\n",
+    "stdout_base64": "SGVsbG8sIENhcnJpY2sgTlQhDQo=",
+    "stderr_raw": "",
+    "stderr_base64": ""
+  }
 }
