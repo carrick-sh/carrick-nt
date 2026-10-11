@@ -4,8 +4,11 @@
 //! - docs/design/ntdll-bootstrap.md Section 2.3 & 3.3
 //! - Clean-Room Rules: No Wine/ReactOS, no leaked Microsoft code.
 
+#[cfg(any(test, feature = "test-support"))]
 use alloc::collections::BTreeMap;
-use carrick_nt_abi::{GuestPtr, GuestVa, IoStatusBlock, NtStatus};
+#[cfg(any(test, feature = "test-support"))]
+use carrick_nt_abi::{GuestPtr, IoStatusBlock};
+use carrick_nt_abi::{GuestVa, NtStatus};
 
 /// Trait abstracting reading and writing guest virtual memory.
 pub trait UserMemory {
@@ -17,6 +20,7 @@ pub trait UserMemory {
 }
 
 /// In-memory simulated guest address space for VM-free unit and scenario tests.
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Clone, Debug, Default)]
 pub struct SimulatedUserMemory {
     pages: BTreeMap<
@@ -29,6 +33,7 @@ pub struct SimulatedUserMemory {
     >,
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl SimulatedUserMemory {
     /// Creates a new empty simulated memory space.
     pub fn new() -> Self {
@@ -106,6 +111,7 @@ impl SimulatedUserMemory {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl UserMemory for SimulatedUserMemory {
     fn read_bytes(&self, va: GuestVa, buf: &mut [u8]) -> Result<(), NtStatus> {
         if buf.is_empty() {

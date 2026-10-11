@@ -11,18 +11,22 @@
 extern crate alloc;
 
 pub mod call;
+pub mod carrick_memory;
 pub mod decode;
 pub mod dispatch;
 pub mod handle_table;
 pub mod memory;
 
 pub use call::NtCall;
+pub use carrick_memory::CarrickUserMemory;
 pub use decode::{decode_nt_call, read_nt_argument, NT_X64_STACK_ARG_BASE_OFFSET};
 #[cfg(feature = "std")]
 pub use dispatch::StdOutputSink;
 pub use dispatch::{encode_return, BufferOutputSink, ControlFlow, NtDispatcher, OutputSink};
 pub use handle_table::{access_rights, HandleEntry, HandleObject, HandleTable};
-pub use memory::{SimulatedUserMemory, UserMemory};
+#[cfg(any(test, feature = "test-support"))]
+pub use memory::SimulatedUserMemory;
+pub use memory::UserMemory;
 
 use carrick_core::personality::{CallContext, DecodedCall, EntryDecodeError};
 use carrick_core::Personality;
@@ -45,14 +49,7 @@ impl Personality for NtPersonality {
     }
 
     fn thread_pointer_register(&self) -> ThreadPointerRegister {
-        #[cfg(target_arch = "x86_64")]
-        {
-            ThreadPointerRegister::GS
-        }
-        #[cfg(not(target_arch = "x86_64"))]
-        {
-            ThreadPointerRegister::GS
-        }
+        ThreadPointerRegister::GS
     }
 
     fn decode<A: EntryArch>(
