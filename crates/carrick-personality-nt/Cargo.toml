@@ -12,8 +12,8 @@ std = []
 test-support = []
 
 [dependencies]
-carrick-core = { git = "https://github.com/carrick-sh/carrick.git", rev = "b211c56a6993c8d5a6155589aa4324ee2d04dada" }
-carrick-guest-arch = { git = "https://github.com/carrick-sh/carrick.git", rev = "b211c56a6993c8d5a6155589aa4324ee2d04dada" }
+carrick-core = { git = "https://github.com/carrick-sh/carrick.git", rev = "64931dbf3b6e54dd362df2feada02781918149c8" }
+carrick-guest-arch = { git = "https://github.com/carrick-sh/carrick.git", rev = "64931dbf3b6e54dd362df2feada02781918149c8" }
 carrick-nt-abi = { path = "../carrick-nt-abi" }
 
 [dev-dependencies]
